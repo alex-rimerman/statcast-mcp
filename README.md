@@ -250,6 +250,10 @@ All data is sourced from:
 - [**FanGraphs**](https://www.fangraphs.com/) — Season-level batting and pitching statistics
 - [**Baseball Reference**](https://www.baseball-reference.com/) — Player identification and cross-references
 
+## Reference Guide
+
+For detailed tool-by-tool documentation, row limits, parameters, and usage patterns, see [REFERENCE.md](REFERENCE.md).
+
 ## Notes
 
 - **Date ranges**: Statcast data is available from 2008 onward. Some metrics (exit velocity, launch angle) are only available from 2015+.

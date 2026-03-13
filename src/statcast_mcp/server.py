@@ -582,7 +582,7 @@ def sprint_speed_leaderboard(
     from pybaseball import statcast_sprint_speed as _fn
 
     try:
-        data = _fn(year, min_opportunities=min_opportunities)
+        data = _fn(year, min_opp=min_opportunities)
     except Exception as e:
         return f"Error fetching sprint speed data: {e}"
 
