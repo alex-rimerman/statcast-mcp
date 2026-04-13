@@ -4,7 +4,7 @@
 
 **One-liner for social posts**
 
-> **Statcast MCP** — **46** tools for MLB data in ChatGPT / Cursor / Claude: Statcast (pitches, games, matchups, defense, movement, active spin), FanGraphs season & team leaderboards, **full team rosters** (FG + BRef), **Lahman** historical slices, **schedules & splits** (BRef), **draft & prospects**, **WAR** daily files, xStats (incl. **batch** lineups), sprint & running splits, standings, percentiles, OAA, and BRef date-range streaks. Natural language → Savant / FG / BRef / Lahman / MLB data.
+> **Statcast MCP** — **46** tools for MLB data in ChatGPT / Cursor / Claude: Statcast (pitches, games, matchups, defense, movement, active spin), FanGraphs season & team leaderboards (**configurable row limits**, **sortable** season batting leaderboards, BRef fallback when FG fails), **full team rosters** (FG + BRef), **Lahman** historical slices, **schedules & splits** (BRef), **draft & prospects**, **WAR** daily files, xStats (incl. **batch** lineups), sprint & running splits, standings, percentiles, OAA, and BRef date-range streaks. Natural language → Savant / FG / BRef / Lahman / MLB data.
 
 **Shorter (~280 chars)**
 
@@ -22,7 +22,7 @@
 | Identity | `player_lookup` |
 | Pitch-level Statcast | `statcast_search`, `statcast_batter`, `statcast_pitcher`, `statcast_game_pitches` |
 | Matchups & splits | `batter_vs_pitcher_statcast`, `player_stat_splits` |
-| Season (league) | `season_batting_stats`, `season_pitching_stats`, `season_fielding_stats` |
+| Season (league) | `season_batting_stats` (optional `sort_by`, `max_output_rows` up to 5000, BRef fallback if FG unavailable), `season_pitching_stats`, `season_fielding_stats` |
 | Season (**team roster**) | `team_season_batting_stats`, `team_season_pitching_stats` |
 | League team totals (FG) | `league_team_batting_totals`, `league_team_pitching_totals` |
 | Schedule | `team_schedule` |

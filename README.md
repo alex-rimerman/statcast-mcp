@@ -55,15 +55,15 @@ Here's what a typical exchange looks like when you use the Statcast MCP:
 
 | Tool | What It Does |
 |------|-------------|
-| `player_lookup` | Find any player's ID, years active, and database links |
-| `statcast_search` | Pitch-by-pitch data for a date range (optionally filtered by team) |
-| `statcast_batter` | Every pitch a specific batter saw in a date range |
+| `player_lookup` | Find any player's ID, years active, and database links (default **10** rows; up to **5000** if many fuzzy matches) |
+| `statcast_search` | Pitch-by-pitch data for a date range (optionally filtered by team); default **100** pitch rows, up to **5000** |
+| `statcast_batter` | Every pitch a specific batter saw in a date range (default **100** rows, up to **5000**) |
 | `statcast_batter_pitch_arsenal` | Batting stats by pitch type (BA, SLG, wOBA vs fastballs, sliders, etc.) |
-| `statcast_pitcher` | Every pitch a specific pitcher threw in a date range |
-| `season_batting_stats` | Full-season batting stats from FanGraphs (AVG, OPS, WAR, wRC+, etc.) |
-| `season_pitching_stats` | Full-season pitching stats from FanGraphs (ERA, FIP, K/9, WAR, etc.) |
-| `team_season_batting_stats` | **Team** batting — full roster actual stats (FG, or BRef fallback) |
-| `team_season_pitching_stats` | **Team** pitching — rotation + bullpen actual stats (FG, or BRef fallback) |
+| `statcast_pitcher` | Every pitch a specific pitcher threw in a date range (default **100** rows, up to **5000**) |
+| `season_batting_stats` | Full-season batting from **FanGraphs** (AVG, OPS, WAR, wRC+, …). **`max_output_rows`** (default **50**, max **5000**), optional **`sort_by`** / **`sort_descending`** for leaderboards. If FG fails, **single-season** queries fall back to **Baseball Reference**. |
+| `season_pitching_stats` | Full-season pitching stats from FanGraphs (ERA, FIP, K/9, WAR, …); default **50** rows, up to **5000** via **`max_output_rows`** |
+| `team_season_batting_stats` | **Team** batting — full roster actual stats (FG, or BRef fallback); default **200** rows, up to **5000** |
+| `team_season_pitching_stats` | **Team** pitching — rotation + bullpen actual stats (FG, or BRef fallback); default **200** rows, up to **5000** |
 | `statcast_batter_expected_stats` | xBA, xSLG, xwOBA leaderboard — who *deserves* better stats? |
 | `statcast_pitcher_expected_stats` | Expected stats allowed by pitchers |
 | `expected_stats_batch` | Expected stats for **many** batters and/or pitchers in **one** call (lineups, rotations) |
@@ -72,7 +72,7 @@ Here's what a typical exchange looks like when you use the Statcast MCP:
 | `statcast_pitcher_pitch_arsenal` | Pitch mix breakdown (% fastball, slider, curve, etc.) |
 | `statcast_pitcher_arsenal_stats` | Performance stats per pitch type (whiff rate, BA against, etc.) |
 | `sprint_speed_leaderboard` | Fastest players in baseball by sprint speed |
-| `team_standings` | Division standings for any season |
+| `team_standings` | Division standings for any season (**15** teams per division table by default; adjustable via **`max_output_rows`**, max **5000** per division) |
 | `batter_percentile_ranks` | Statcast percentile ranks for hitters (exit velo, barrel%, xwOBA, etc.) |
 | `pitcher_percentile_ranks` | Statcast percentile ranks for pitchers (stuff, spin, whiff%, etc.) |
 | `outs_above_average` | Defensive OAA leaderboard by position (SS, CF, `ALL`, etc.) |
@@ -80,7 +80,7 @@ Here's what a typical exchange looks like when you use the Statcast MCP:
 | `batting_stats_date_range` | Batting stats over any date range (Baseball Reference) |
 | `pitching_stats_date_range` | Pitching stats over any date range (Baseball Reference) |
 
-**46 tools total.** Core table above; **extended** tools add schedules, splits, Lahman history, draft/prospects, WAR files, extra Statcast defense/movement, league team totals, single-game pitch logs, and batter–pitcher matchup summaries. Call **`statcast_tool_directory`** for the full list, or see [TOOLS_SUMMARY.md](TOOLS_SUMMARY.md) and [REFERENCE.md](REFERENCE.md).
+**46 tools total.** Most tables support optional **`max_output_rows`** (per-tool defaults: 10 / 50 / 100 / 200 / 250 — see [REFERENCE.md](REFERENCE.md)); values are clamped to **5000** max. Core table above; **extended** tools add schedules, splits, Lahman history, draft/prospects, WAR files, extra Statcast defense/movement, league team totals, single-game pitch logs, and batter–pitcher matchup summaries. Call **`statcast_tool_directory`** for the full list, or see [TOOLS_SUMMARY.md](TOOLS_SUMMARY.md) and [REFERENCE.md](REFERENCE.md).
 
 ### Extended tools (high level)
 
@@ -238,6 +238,17 @@ statcast_batter_pitch_arsenal(year=2023, player_name="Aaron Judge")
 season_batting_stats(start_season=2024)
 ```
 
+> "Top 200 hitters in 2023 by slugging, min 100 PA"
+
+```
+season_batting_stats(
+    start_season=2023,
+    min_plate_appearances=100,
+    sort_by="SLG",
+    max_output_rows=200,
+)
+```
+
 ### Expected Stats (Find Undervalued Players)
 
 > "Show me batters whose expected stats were way higher than their actual stats in 2024"
@@ -326,6 +337,7 @@ For detailed tool-by-tool documentation, row limits, parameters, and usage patte
 - **Date ranges**: Statcast data is available from 2008 onward. Some metrics (exit velocity, launch angle) are only available from 2015+.
 - **Query speed**: Shorter date ranges return faster. For pitch-level data, keep ranges to 1-5 days when possible.
 - **Rate limits**: Baseball Savant limits individual requests to ~30,000 rows. The server handles splitting larger queries automatically.
+- **Markdown row display**: Each tool’s markdown table is capped by **`max_output_rows`** (defaults vary; hard maximum **5000** per [limits.py](src/statcast_mcp/limits.py)) so responses stay bounded in chat clients.
 - **Player names**: Tools accept names like "Mike Trout", "Trout, Mike", or "Shohei Ohtani". The server resolves names to MLB IDs automatically.
 
 ## Development
@@ -345,7 +357,7 @@ statcast-mcp
 # Test with the MCP Inspector
 npx @modelcontextprotocol/inspector statcast-mcp
 
-# Smoke-test all 24 tools (needs network; ~2024 fixtures)
+# Smoke-test all 46 tools (needs network; ~2024 fixtures)
 PYTHONPATH=src python scripts/verify_tools.py
 ```
 
