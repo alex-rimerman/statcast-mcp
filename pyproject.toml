@@ -1,6 +1,6 @@
 [project]
 name = "statcast-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "An MCP server that lets anyone query MLB Statcast data using natural language"
 readme = "README.md"
 license = "MIT"

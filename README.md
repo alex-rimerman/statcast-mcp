@@ -80,6 +80,29 @@ Here's what a typical exchange looks like when you use the Statcast MCP:
 | `batting_stats_date_range` | Batting stats over any date range (Baseball Reference) |
 | `pitching_stats_date_range` | Pitching stats over any date range (Baseball Reference) |
 
+**46 tools total.** Core table above; **extended** tools add schedules, splits, Lahman history, draft/prospects, WAR files, extra Statcast defense/movement, league team totals, single-game pitch logs, and batter–pitcher matchup summaries. Call **`statcast_tool_directory`** for the full list, or see [TOOLS_SUMMARY.md](TOOLS_SUMMARY.md) and [REFERENCE.md](REFERENCE.md).
+
+### Extended tools (high level)
+
+| Tool | What it does |
+|------|----------------|
+| `statcast_tool_directory` | Markdown catalog of **all** tools |
+| `team_schedule` | Team schedule & scores (Baseball Reference) |
+| `player_stat_splits` | BRef splits (platoon, home/away, …) |
+| `statcast_game_pitches` | Every pitch in one game (`game_pk`) |
+| `batter_vs_pitcher_statcast` | Statcast summary for one batter vs one pitcher |
+| `lahman_season_batting` / `lahman_season_pitching` / `lahman_season_teams` | Lahman / Baseball Data Bank slices |
+| `top_prospects_mlb` | MLB Pipeline–style prospect list |
+| `amateur_draft_round` | Amateur draft by year + round |
+| `war_daily_batting` / `war_daily_pitching` | BRef WAR component files |
+| `season_fielding_stats` | FanGraphs fielding leaderboard |
+| `league_team_batting_totals` / `league_team_pitching_totals` | FG team lines (league-wide) |
+| `statcast_running_splits_detail` | 90 ft sprint splits |
+| `statcast_outfield_catch_probability` | OF catch prob / stars |
+| `statcast_outfield_jump` | OF jump metric |
+| `statcast_catcher_framing` / `statcast_catcher_poptime` | Catcher framing & pop time |
+| `statcast_pitcher_pitch_movement` / `statcast_pitcher_active_spin_leaderboard` | Pitch movement & active spin (Statcast) |
+
 **Team seasons:** Use **`team_season_batting_stats`** / **`team_season_pitching_stats`** with a 3-letter code (`PHI`, `NYY`, …) for a full roster’s **actual** stats (lineup + staff). FanGraphs is tried first; Baseball Reference is used if FG fails or returns nothing.
 
 **Player search:** Nearly every leaderboard/stat tool accepts optional **`player_name`** (e.g. `"Aaron Judge"`) so you get that player’s full rows instead of only the first 50 in the table. For **groups** (full lineup + rotation, “all starters”), use **`expected_stats_batch`** with comma-separated names — the server does **not** pull MLB rosters automatically; list names explicitly or resolve them first (e.g. web / `player_lookup`). Pitch-level tools already take a name via `statcast_batter` / `statcast_pitcher`. `team_standings` is team-only.

@@ -559,6 +559,35 @@ Provide at least one of `batters` or `pitchers`.
 
 ---
 
+## Extended tools (v0.2 — 22 additional tools)
+
+Use **`statcast_tool_directory`** for the canonical markdown list. Summary:
+
+| Tool | Source | Notes |
+|------|--------|--------|
+| `statcast_tool_directory` | Local | Full catalog text |
+| `team_schedule` | BRef | ~162 rows/season; `redirect_stdout` hides pybaseball prints |
+| `player_stat_splits` | BRef | Requires valid BRef `key_bbref` via Chadwick; wide output |
+| `statcast_game_pitches` | Savant | **100** pitch rows max in MCP; pass real `game_pk` |
+| `batter_vs_pitcher_statcast` | Savant | Short date ranges; **80** sample rows + summary text |
+| `lahman_season_batting` / `lahman_season_pitching` / `lahman_season_teams` | Lahman | First use may **download** the Lahman zip (~100MB); `teamID` e.g. `NYA` |
+| `top_prospects_mlb` | MLB.com | May break if MLB returns HTML instead of a table |
+| `amateur_draft_round` | BRef | Per **year + round** |
+| `war_daily_batting` / `war_daily_pitching` | BRef files | Large tables; optional `season` filter |
+| `season_fielding_stats` | FanGraphs | Same 403/500 caveats as other FG tools |
+| `league_team_batting_totals` / `league_team_pitching_totals` | FanGraphs | One row per team (`team=0,ts`) |
+| `statcast_running_splits_detail` | Savant | 90 ft split times |
+| `statcast_outfield_catch_probability` | Savant | OF catch stars |
+| `statcast_outfield_jump` | Savant | OF jump |
+| `statcast_catcher_framing` | Savant | CSV format can change |
+| `statcast_catcher_poptime` | Savant | Pop time to 2B/3B |
+| `statcast_pitcher_pitch_movement` | Savant | `pitch_type` e.g. `FF` |
+| `statcast_pitcher_active_spin_leaderboard` | Savant | May warn on old seasons |
+
+**Tests:** `PYTHONPATH=src python scripts/verify_tools.py` exercises **46** tools (2024 fixtures).
+
+---
+
 ## Practical Usage Patterns
 
 ### Getting complete data when truncated

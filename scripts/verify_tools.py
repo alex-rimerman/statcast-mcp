@@ -50,6 +50,51 @@ def main() -> int:
         ("pitching_stats_date_range", lambda: s.pitching_stats_date_range(RANGE_START, RANGE_END)),
     ]
 
+    from pybaseball import statcast as _sc
+
+    try:
+        _one = _sc(DATE, DATE, team="NYY", verbose=False, parallel=False)
+        _gpk = int(_one["game_pk"].iloc[0]) if _one is not None and len(_one) else 776265
+    except Exception:
+        _gpk = 776265
+
+    expanded: list[tuple[str, Callable[[], Any]]] = [
+        ("statcast_tool_directory", lambda: s.EXPANDED_TOOL_FUNCS["statcast_tool_directory"](short=True)),
+        ("team_schedule", lambda: s.EXPANDED_TOOL_FUNCS["team_schedule"](YEAR, "PHI")),
+        (
+            "player_stat_splits",
+            lambda: s.EXPANDED_TOOL_FUNCS["player_stat_splits"](
+                "Aaron Judge", YEAR, pitching_splits=False, include_player_info=False
+            ),
+        ),
+        ("statcast_game_pitches", lambda: s.EXPANDED_TOOL_FUNCS["statcast_game_pitches"](_gpk)),
+        (
+            "batter_vs_pitcher_statcast",
+            lambda: s.EXPANDED_TOOL_FUNCS["batter_vs_pitcher_statcast"](
+                "Aaron Judge", "Gerrit Cole", DATE, DATE
+            ),
+        ),
+        ("lahman_season_batting", lambda: s.EXPANDED_TOOL_FUNCS["lahman_season_batting"](2023, team_id="NYA")),
+        ("lahman_season_pitching", lambda: s.EXPANDED_TOOL_FUNCS["lahman_season_pitching"](2023, team_id="NYA")),
+        ("lahman_season_teams", lambda: s.EXPANDED_TOOL_FUNCS["lahman_season_teams"](2023)),
+        ("top_prospects_mlb", lambda: s.EXPANDED_TOOL_FUNCS["top_prospects_mlb"](None, None)),
+        ("amateur_draft_round", lambda: s.EXPANDED_TOOL_FUNCS["amateur_draft_round"](2023, 1, keep_stats=False)),
+        ("war_daily_batting", lambda: s.EXPANDED_TOOL_FUNCS["war_daily_batting"](YEAR)),
+        ("war_daily_pitching", lambda: s.EXPANDED_TOOL_FUNCS["war_daily_pitching"](YEAR)),
+        ("season_fielding_stats", lambda: s.EXPANDED_TOOL_FUNCS["season_fielding_stats"](YEAR, player_name="Mookie Betts")),
+        ("statcast_running_splits_detail", lambda: s.EXPANDED_TOOL_FUNCS["statcast_running_splits_detail"](YEAR)),
+        ("statcast_outfield_catch_probability", lambda: s.EXPANDED_TOOL_FUNCS["statcast_outfield_catch_probability"](YEAR)),
+        ("statcast_outfield_jump", lambda: s.EXPANDED_TOOL_FUNCS["statcast_outfield_jump"](YEAR)),
+        ("statcast_catcher_framing", lambda: s.EXPANDED_TOOL_FUNCS["statcast_catcher_framing"](YEAR)),
+        ("statcast_catcher_poptime", lambda: s.EXPANDED_TOOL_FUNCS["statcast_catcher_poptime"](YEAR)),
+        ("statcast_pitcher_pitch_movement", lambda: s.EXPANDED_TOOL_FUNCS["statcast_pitcher_pitch_movement"](YEAR)),
+        ("statcast_pitcher_active_spin_leaderboard", lambda: s.EXPANDED_TOOL_FUNCS["statcast_pitcher_active_spin_leaderboard"](YEAR)),
+        ("league_team_batting_totals", lambda: s.EXPANDED_TOOL_FUNCS["league_team_batting_totals"](YEAR)),
+        ("league_team_pitching_totals", lambda: s.EXPANDED_TOOL_FUNCS["league_team_pitching_totals"](YEAR)),
+    ]
+
+    tests = tests + expanded
+
     failures = 0
     warns = 0
     for name, fn in tests:

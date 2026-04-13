@@ -1,9 +1,9 @@
 """
 Statcast MCP Server
 
-An MCP server that provides natural-language access to MLB Statcast data.
-Built on pybaseball, it exposes tools for pitch-level data, season stats,
-expected stats, exit velocity, pitcher arsenals, sprint speed, and standings.
+An MCP server that provides natural-language access to MLB data: Statcast
+(pitch/game/matchup/defense/movement), FanGraphs, Baseball Reference, Lahman,
+schedules, splits, draft/prospects, and WAR files — **46** tools via pybaseball.
 """
 
 from __future__ import annotations
@@ -23,7 +23,10 @@ mcp = FastMCP(
         "For full **team** actual season stats (lineup + staff), use "
         "team_season_batting_stats and team_season_pitching_stats with a 3-letter code "
         "(e.g. PHI). "
-        "Data from Baseball Savant, FanGraphs, and Baseball Reference (2008+)."
+        "Expanded tools (see statcast_tool_directory): team schedule, BRef splits, Lahman history, "
+        "draft, WAR files, extra Statcast defense/movement, league team totals, game_pk pitch logs, "
+        "and batter-vs-pitcher Statcast summaries. "
+        "Data from Baseball Savant, FanGraphs, Baseball Reference, Lahman, and MLB.com (2008+)."
     ),
 )
 
@@ -1407,6 +1410,23 @@ def pitching_stats_date_range(
             return f"No pitching stats for {player_name} in {start_date}–{end_date}."
 
     return _fmt(data, max_rows=50)
+
+
+# ---------------------------------------------------------------------------
+# Expanded tools (schedules, Lahman, draft, extra Statcast, catalog)
+# ---------------------------------------------------------------------------
+
+from statcast_mcp.expanded_tools import register_expanded_tools
+
+EXPANDED_TOOL_FUNCS = register_expanded_tools(
+    mcp,
+    _fmt,
+    _filter_player_rows,
+    _resolve_player,
+    _normalize_team_abbr,
+    _trim_pitch_cols,
+)
+"""Map of expanded-tool name → callable (for tests and introspection)."""
 
 
 # ---------------------------------------------------------------------------
