@@ -11,6 +11,15 @@ from __future__ import annotations
 import pandas as pd
 from mcp.server.fastmcp import FastMCP
 
+from statcast_mcp.limits import (
+    DEFAULT_LEADERBOARD_ROWS,
+    DEFAULT_PITCH_LEVEL_ROWS,
+    DEFAULT_PLAYER_LOOKUP_ROWS,
+    DEFAULT_TEAM_SEASON_ROWS,
+    MAX_OUTPUT_ROWS_CAP,
+    output_limit,
+)
+
 mcp = FastMCP(
     "Statcast",
     instructions=(
@@ -336,12 +345,15 @@ def _team_pitching_from_bref(team: str, season: int) -> pd.DataFrame:
 
 
 @mcp.tool()
-def player_lookup(player_name: str) -> str:
+def player_lookup(player_name: str, max_output_rows: int | None = None) -> str:
     """Look up a baseball player to find their MLBAM ID, years active, and database IDs.
 
     Accepts names like 'Mike Trout', 'Trout, Mike', or 'Shohei Ohtani'.
     Useful for verifying a player's identity or finding their MLBAM / FanGraphs /
     Baseball-Reference IDs before running other queries.
+
+    Args:
+        max_output_rows: Max rows in the result table (default 10). Capped at 5000.
     """
     from pybaseball import playerid_lookup
 
@@ -366,7 +378,10 @@ def player_lookup(player_name: str) -> str:
             "Check the spelling and try again."
         )
 
-    return _fmt(results, max_rows=10)
+    return _fmt(
+        results,
+        max_rows=output_limit(max_output_rows, DEFAULT_PLAYER_LOOKUP_ROWS),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +394,7 @@ def statcast_search(
     start_date: str,
     end_date: str | None = None,
     team: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Search for pitch-level Statcast data within a date range.
 
@@ -391,6 +407,7 @@ def statcast_search(
                   single-day queries.
         team: Optional three-letter team abbreviation to filter results
               (e.g. 'NYY', 'LAD', 'BOS').
+        max_output_rows: Max pitch rows in the markdown table (default 100). Capped at 5000.
 
     Data is available from the 2008 season onward.
     Tip: keep date ranges to 1-5 days for faster results.
@@ -406,7 +423,10 @@ def statcast_search(
         return f"Error fetching Statcast data: {e}"
 
     data = _trim_pitch_cols(data)
-    return _fmt(data, max_rows=100)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_PITCH_LEVEL_ROWS),
+    )
 
 
 @mcp.tool()
@@ -414,6 +434,7 @@ def statcast_batter(
     player_name: str,
     start_date: str,
     end_date: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get pitch-level Statcast data for a specific batter in a date range.
 
@@ -424,6 +445,7 @@ def statcast_batter(
         player_name: Full name of the batter (e.g. 'Aaron Judge').
         start_date: Start date in YYYY-MM-DD format.
         end_date: End date in YYYY-MM-DD format (defaults to start_date).
+        max_output_rows: Max pitch rows in the table (default 100). Capped at 5000.
 
     Great for analyzing a hitter's performance over a specific period.
     """
@@ -445,7 +467,10 @@ def statcast_batter(
     data = _trim_pitch_cols(data)
     return (
         f"Statcast batting data for {name} (MLBAM ID: {mlbam_id}):\n\n"
-        + _fmt(data, max_rows=100)
+        + _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_PITCH_LEVEL_ROWS),
+        )
     )
 
 
@@ -454,6 +479,7 @@ def statcast_pitcher(
     player_name: str,
     start_date: str,
     end_date: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get pitch-level Statcast data for a specific pitcher in a date range.
 
@@ -464,6 +490,7 @@ def statcast_pitcher(
         player_name: Full name of the pitcher (e.g. 'Gerrit Cole').
         start_date: Start date in YYYY-MM-DD format.
         end_date: End date in YYYY-MM-DD format (defaults to start_date).
+        max_output_rows: Max pitch rows in the table (default 100). Capped at 5000.
 
     Great for analyzing a pitcher's stuff, outings, or trends over time.
     """
@@ -485,7 +512,10 @@ def statcast_pitcher(
     data = _trim_pitch_cols(data)
     return (
         f"Statcast pitching data for {name} (MLBAM ID: {mlbam_id}):\n\n"
-        + _fmt(data, max_rows=100)
+        + _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_PITCH_LEVEL_ROWS),
+        )
     )
 
 
@@ -500,6 +530,7 @@ def season_batting_stats(
     end_season: int | None = None,
     min_plate_appearances: int | None = None,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get season-level batting statistics from FanGraphs.
 
@@ -512,6 +543,7 @@ def season_batting_stats(
         min_plate_appearances: Minimum plate appearances to qualify.
             Leave blank to use the FanGraphs default qualified threshold.
         player_name: Optional. Filter to one player (e.g. 'Aaron Judge').
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for finding league leaders, comparing players, or reviewing a full season.
     """
@@ -536,7 +568,10 @@ def season_batting_stats(
                 "with the given PA threshold."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -545,6 +580,7 @@ def season_pitching_stats(
     end_season: int | None = None,
     min_innings: int | None = None,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get season-level pitching statistics from FanGraphs.
 
@@ -557,6 +593,7 @@ def season_pitching_stats(
         min_innings: Minimum innings pitched to qualify.
             Leave blank to use the FanGraphs default qualified threshold.
         player_name: Optional. Filter to one pitcher (e.g. 'Gerrit Cole').
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for finding pitching leaders, comparing pitchers, or analyzing a season.
     """
@@ -581,7 +618,10 @@ def season_pitching_stats(
                 "with the given IP threshold."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -590,6 +630,7 @@ def team_season_batting_stats(
     season: int,
     min_plate_appearances: int = 1,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Full-season **actual** batting stats for one MLB team (entire roster).
 
@@ -604,6 +645,7 @@ def team_season_batting_stats(
         min_plate_appearances: Minimum PA to include on the FanGraphs pull (default 1).
             Ignored for the BRef fallback, which lists everyone who appeared.
         player_name: Optional. Restrict to one player (e.g. ``Bryce Harper``).
+        max_output_rows: Max rows in the table (default 200). Capped at 5000.
 
     Use this for “Phillies lineup stats”, “Yankees 2024 hitters”, etc. For **league**
     leaderboards without a team filter, use ``season_batting_stats`` instead.
@@ -649,7 +691,10 @@ def team_season_batting_stats(
             )
 
     header = f"**Source:** {source}\n**Team:** {abbr} | **Season:** {season}\n\n"
-    return header + _fmt(data, max_rows=200)
+    return header + _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_TEAM_SEASON_ROWS),
+    )
 
 
 @mcp.tool()
@@ -658,6 +703,7 @@ def team_season_pitching_stats(
     season: int,
     min_innings: int = 1,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Full-season **actual** pitching stats for one MLB team (rotation + bullpen).
 
@@ -670,6 +716,7 @@ def team_season_pitching_stats(
         min_innings: Minimum IP for the FanGraphs pull (default 1). Ignored for BRef
             fallback (full staff).
         player_name: Optional. One pitcher (e.g. ``Zack Wheeler``).
+        max_output_rows: Max rows in the table (default 200). Capped at 5000.
 
     Split **rotation vs bullpen** by sorting on ``GS`` in the table (starters vs relievers).
     For league-wide pitching only, use ``season_pitching_stats``.
@@ -712,7 +759,10 @@ def team_season_pitching_stats(
             )
 
     header = f"**Source:** {source}\n**Team:** {abbr} | **Season:** {season}\n\n"
-    return header + _fmt(data, max_rows=200)
+    return header + _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_TEAM_SEASON_ROWS),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -725,6 +775,7 @@ def statcast_batter_expected_stats(
     year: int,
     min_plate_appearances: int = 50,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get expected batting stats (xBA, xSLG, xwOBA vs actual) from Statcast.
 
@@ -737,6 +788,7 @@ def statcast_batter_expected_stats(
         player_name: Optional. If set (e.g. 'Aaron Judge'), returns only that
             player's row — use this so a star is not cut off by the 50-row
             leaderboard limit.
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for identifying lucky/unlucky hitters or a single player's expected line.
     """
@@ -759,7 +811,10 @@ def statcast_batter_expected_stats(
                 "or confirm they qualified."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -767,6 +822,7 @@ def statcast_pitcher_expected_stats(
     year: int,
     min_plate_appearances: int = 50,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get expected stats allowed by pitchers from Statcast.
 
@@ -777,6 +833,7 @@ def statcast_pitcher_expected_stats(
         min_plate_appearances: Minimum PA against to qualify (default 50).
         player_name: Optional. If set (e.g. 'Gerrit Cole'), returns only that
             pitcher's row (avoids missing them in the truncated leaderboard).
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for finding pitchers who outperformed or underperformed their contact quality.
     """
@@ -798,7 +855,10 @@ def statcast_pitcher_expected_stats(
                 f"{min_plate_appearances}+ PA faced. Try a lower min_plate_appearances."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -807,6 +867,7 @@ def expected_stats_batch(
     batters: str | None = None,
     pitchers: str | None = None,
     min_plate_appearances: int = 50,
+    max_output_rows: int | None = None,
 ) -> str:
     """Expected stats (xBA, xSLG, xwOBA vs actual) for *multiple* batters and/or pitchers in one call.
 
@@ -825,6 +886,7 @@ def expected_stats_batch(
         pitchers: Comma-separated pitcher names, e.g.
             "Gerrit Cole, Carlos Rodon, Marcus Stroman, Clarke Schmidt, Luis Gil"
         min_plate_appearances: Minimum PA to qualify (default 50).
+        max_output_rows: Max rows per batter/pitcher section (default: all matched rows, up to 5000).
 
     Provide at least one of batters or pitchers. Semicolons and newlines also separate names.
     """
@@ -867,7 +929,11 @@ def expected_stats_batch(
             if merged.empty:
                 sections.append("No batter rows matched.\n\n")
             else:
-                sections.append(_fmt(merged, max_rows=len(merged)))
+                lim = output_limit(
+                    max_output_rows,
+                    min(len(merged), MAX_OUTPUT_ROWS_CAP),
+                )
+                sections.append(_fmt(merged, max_rows=lim))
             if errs:
                 sections.append("\n**Notes:** " + " | ".join(errs))
 
@@ -885,7 +951,11 @@ def expected_stats_batch(
             if merged.empty:
                 sections.append("No pitcher rows matched.\n\n")
             else:
-                sections.append(_fmt(merged, max_rows=len(merged)))
+                lim = output_limit(
+                    max_output_rows,
+                    min(len(merged), MAX_OUTPUT_ROWS_CAP),
+                )
+                sections.append(_fmt(merged, max_rows=lim))
             if errs:
                 sections.append("\n**Notes:** " + " | ".join(errs))
 
@@ -897,6 +967,7 @@ def statcast_batter_pitch_arsenal(
     year: int,
     player_name: str | None = None,
     min_plate_appearances: int = 10,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get batting stats broken down by pitch type for batters.
 
@@ -908,6 +979,7 @@ def statcast_batter_pitch_arsenal(
         player_name: Optional. Filter to a specific batter (e.g. 'Aaron Judge').
             If omitted, returns the full leaderboard.
         min_plate_appearances: Minimum PA per pitch type to qualify (default 10).
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for analyzing how a hitter performs against fastballs vs. breaking balls.
     """
@@ -930,9 +1002,15 @@ def statcast_batter_pitch_arsenal(
                 f"{min_plate_appearances}+ PA per pitch type."
             )
         header = f"Batting stats by pitch type for {display} ({year}):\n\n"
-        return header + _fmt(data, max_rows=50)
+        return header + _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -940,6 +1018,7 @@ def statcast_batter_exitvelo_barrels(
     year: int,
     min_batted_ball_events: int = 50,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get exit velocity and barrel rate leaderboard for batters.
 
@@ -952,6 +1031,7 @@ def statcast_batter_exitvelo_barrels(
         year: Season year (e.g. 2024).
         min_batted_ball_events: Minimum batted ball events to qualify (default 50).
         player_name: Optional. Filter to one batter (e.g. 'Aaron Judge').
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for finding the hardest hitters and best contact quality in baseball.
     """
@@ -973,7 +1053,10 @@ def statcast_batter_exitvelo_barrels(
                 f"{min_batted_ball_events}+ batted ball events."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -981,6 +1064,7 @@ def statcast_pitcher_exitvelo_barrels(
     year: int,
     min_batted_ball_events: int = 50,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get exit velocity and barrel rate allowed by pitchers.
 
@@ -991,6 +1075,7 @@ def statcast_pitcher_exitvelo_barrels(
         year: Season year (e.g. 2024).
         min_batted_ball_events: Minimum batted ball events against (default 50).
         player_name: Optional. Filter to one pitcher (e.g. 'Gerrit Cole').
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for finding pitchers who suppress hard contact most effectively.
     """
@@ -1012,7 +1097,10 @@ def statcast_pitcher_exitvelo_barrels(
                 f"{min_batted_ball_events}+ batted ball events against."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1025,6 +1113,7 @@ def statcast_pitcher_pitch_arsenal(
     year: int,
     min_pitches: int = 100,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get pitch arsenal breakdown for all pitchers in a season.
 
@@ -1034,6 +1123,7 @@ def statcast_pitcher_pitch_arsenal(
         year: Season year (e.g. 2024).
         min_pitches: Minimum total pitches thrown to qualify (default 100).
         player_name: Optional. Filter to one pitcher (e.g. 'Spencer Strider').
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for understanding what pitches a pitcher throws and how often.
     """
@@ -1055,7 +1145,10 @@ def statcast_pitcher_pitch_arsenal(
                 f"{min_pitches}+ pitches thrown."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -1063,6 +1156,7 @@ def statcast_pitcher_arsenal_stats(
     year: int,
     min_plate_appearances: int = 25,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get performance stats broken down by pitch type for each pitcher.
 
@@ -1073,6 +1167,7 @@ def statcast_pitcher_arsenal_stats(
         year: Season year (e.g. 2024).
         min_plate_appearances: Minimum PA for each pitch type (default 25).
         player_name: Optional. Filter to one pitcher (all their pitch types).
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for evaluating which specific pitches are most (or least) effective.
     """
@@ -1094,7 +1189,10 @@ def statcast_pitcher_arsenal_stats(
                 f"{min_plate_appearances}+ PA per pitch type."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1107,6 +1205,7 @@ def sprint_speed_leaderboard(
     year: int,
     min_opportunities: int = 10,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Get the Statcast sprint speed leaderboard.
 
@@ -1118,6 +1217,7 @@ def sprint_speed_leaderboard(
         year: Season year (e.g. 2024).
         min_opportunities: Minimum competitive run opportunities (default 10).
         player_name: Optional. Filter to one player (e.g. 'Ronald Acuna Jr.').
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Great for finding the fastest players in baseball.
     """
@@ -1139,7 +1239,10 @@ def sprint_speed_leaderboard(
                 f"{min_opportunities}+ opportunities."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1148,7 +1251,7 @@ def sprint_speed_leaderboard(
 
 
 @mcp.tool()
-def team_standings(season: int) -> str:
+def team_standings(season: int, max_output_rows: int | None = None) -> str:
     """Get MLB division standings for a given season.
 
     Returns win-loss records, winning percentage, and games back
@@ -1157,6 +1260,7 @@ def team_standings(season: int) -> str:
 
     Args:
         season: The season year (e.g. 2024).
+        max_output_rows: Max rows **per division** table (default 15). Capped at 5000.
     """
     from pybaseball import standings
 
@@ -1177,9 +1281,13 @@ def team_standings(season: int) -> str:
         "NL West",
     ]
 
+    per_div = output_limit(max_output_rows, 15)
+
     parts: list[str] = []
     for i, table in enumerate(tables):
         label = division_names[i] if i < len(division_names) else f"Division {i + 1}"
+        if len(table) > per_div:
+            table = table.head(per_div)
         parts.append(f"### {label}\n\n{table.to_markdown(index=False)}")
 
     return "\n\n".join(parts)
@@ -1191,7 +1299,11 @@ def team_standings(season: int) -> str:
 
 
 @mcp.tool()
-def batter_percentile_ranks(year: int, player_name: str | None = None) -> str:
+def batter_percentile_ranks(
+    year: int,
+    player_name: str | None = None,
+    max_output_rows: int | None = None,
+) -> str:
     """Statcast percentile ranks for hitters vs the league (exit velo, barrel%, xwOBA, etc.).
 
     Each metric is 0–100 where higher is better for that stat. Use to answer
@@ -1200,6 +1312,7 @@ def batter_percentile_ranks(year: int, player_name: str | None = None) -> str:
     Args:
         year: Season year (e.g. 2024).
         player_name: Optional. If set, returns only that player's row (e.g. "Aaron Judge").
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Qualifying batters: ~2.1 PA per team game (Statcast default).
     """
@@ -1218,11 +1331,18 @@ def batter_percentile_ranks(year: int, player_name: str | None = None) -> str:
         if data.empty:
             return f"No percentile data found for {player_name} in {year}."
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
-def pitcher_percentile_ranks(year: int, player_name: str | None = None) -> str:
+def pitcher_percentile_ranks(
+    year: int,
+    player_name: str | None = None,
+    max_output_rows: int | None = None,
+) -> str:
     """Statcast percentile ranks for pitchers vs the league (spin, whiff%, xERA, etc.).
 
     Each metric is 0–100. Use for "How does this pitcher's stuff compare?"
@@ -1230,6 +1350,7 @@ def pitcher_percentile_ranks(year: int, player_name: str | None = None) -> str:
     Args:
         year: Season year (e.g. 2024).
         player_name: Optional. Filter to one pitcher (e.g. "Gerrit Cole").
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Qualifying pitchers: Statcast minimum innings/appearance thresholds.
     """
@@ -1248,7 +1369,10 @@ def pitcher_percentile_ranks(year: int, player_name: str | None = None) -> str:
         if data.empty:
             return f"No percentile data found for {player_name} in {year}."
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1262,6 +1386,7 @@ def outs_above_average(
     position: str,
     min_attempts: str | int = "q",
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Outs Above Average (OAA) leaderboard by defensive position.
 
@@ -1273,6 +1398,7 @@ def outs_above_average(
             positions supported by Savant). Not available for catcher in this leaderboard.
         min_attempts: Minimum fielding attempts, or "q" for qualified (default).
         player_name: Optional. Filter to one fielder (use a position they actually play).
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     """
     from pybaseball import statcast_outs_above_average as _fn
@@ -1299,7 +1425,10 @@ def outs_above_average(
                 "Try position=ALL or a different position."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -1307,6 +1436,7 @@ def outfield_directional_oaa(
     year: int,
     min_opportunities: str | int = "q",
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Outfielders' Outs Above Average broken out by direction (back/in, left/right).
 
@@ -1316,6 +1446,7 @@ def outfield_directional_oaa(
         year: Season year (e.g. 2024).
         min_opportunities: Minimum opportunities, or "q" for qualified (default).
         player_name: Optional. Filter to one outfielder.
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
     """
     from pybaseball import statcast_outfield_directional_oaa as _fn
 
@@ -1335,7 +1466,10 @@ def outfield_directional_oaa(
                 "Infielders do not appear on this leaderboard."
             )
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1348,6 +1482,7 @@ def batting_stats_date_range(
     start_date: str,
     end_date: str,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Batting stats aggregated over a custom date range (Baseball Reference).
 
@@ -1357,6 +1492,7 @@ def batting_stats_date_range(
         start_date: Start date YYYY-MM-DD (2008+).
         end_date: End date YYYY-MM-DD (inclusive).
         player_name: Optional. Filter to one player (matches BRef ``Name`` / ``mlbID``).
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Returns rate stats (AVG, OBP, SLG, OPS) and counting stats for that span.
     Row limit applies — many players may qualify in long ranges.
@@ -1376,7 +1512,10 @@ def batting_stats_date_range(
         if data.empty:
             return f"No batting stats for {player_name} in {start_date}–{end_date}."
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 @mcp.tool()
@@ -1384,6 +1523,7 @@ def pitching_stats_date_range(
     start_date: str,
     end_date: str,
     player_name: str | None = None,
+    max_output_rows: int | None = None,
 ) -> str:
     """Pitching stats aggregated over a custom date range (Baseball Reference).
 
@@ -1391,6 +1531,7 @@ def pitching_stats_date_range(
         start_date: Start date YYYY-MM-DD (2008+).
         end_date: End date YYYY-MM-DD (inclusive).
         player_name: Optional. Filter to one pitcher.
+        max_output_rows: Max rows in the table (default 50). Capped at 5000.
 
     Returns ERA, WHIP, K/9, IP, W-L, etc. for that span.
     """
@@ -1409,7 +1550,10 @@ def pitching_stats_date_range(
         if data.empty:
             return f"No pitching stats for {player_name} in {start_date}–{end_date}."
 
-    return _fmt(data, max_rows=50)
+    return _fmt(
+        data,
+        max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+    )
 
 
 # ---------------------------------------------------------------------------

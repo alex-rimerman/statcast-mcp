@@ -12,6 +12,20 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from statcast_mcp.limits import (
+    DEFAULT_BVP_SAMPLE_ROWS,
+    DEFAULT_LAHMAN_TEAMS_ROWS,
+    DEFAULT_LEADERBOARD_ROWS,
+    DEFAULT_LEAGUE_TEAM_TOTALS_ROWS,
+    DEFAULT_PITCH_LEVEL_ROWS,
+    DEFAULT_PLAYER_SPLITS_PITCHING_GAME_ROWS,
+    DEFAULT_PLAYER_SPLITS_PRIMARY_ROWS,
+    DEFAULT_PLAYER_SPLITS_SINGLE_TABLE_ROWS,
+    DEFAULT_SCHEDULE_ROWS,
+    DEFAULT_TEAM_SEASON_ROWS,
+    output_limit,
+)
+
 # ---------------------------------------------------------------------------
 # Catalog (for statcast_tool_directory)
 # ---------------------------------------------------------------------------
@@ -141,7 +155,11 @@ def register_expanded_tools(
         return TOOL_CATALOG
 
     @_reg
-    def team_schedule(season: int, team: str) -> str:
+    def team_schedule(
+        season: int,
+        team: str,
+        max_output_rows: int | None = None,
+    ) -> str:
         """Game-by-game schedule and results for one team (Baseball Reference).
 
         Includes date, opponent, home/away, score, W/L, streak, attendance, pitcher W/L/SV when available.
@@ -149,6 +167,7 @@ def register_expanded_tools(
         Args:
             season: Season year (e.g. 2024).
             team: 3-letter code (e.g. PHI, NYY).
+            max_output_rows: Max rows (default 250). Capped at 5000.
         """
         from pybaseball.team_results import schedule_and_record
 
@@ -158,7 +177,10 @@ def register_expanded_tools(
                 data = schedule_and_record(season, abbr)
         except Exception as e:
             return f"Error fetching schedule: {e}"
-        return _fmt(data, max_rows=250)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_SCHEDULE_ROWS),
+        )
 
     @_reg
     def player_stat_splits(
@@ -166,6 +188,7 @@ def register_expanded_tools(
         year: int | None = None,
         pitching_splits: bool = False,
         include_player_info: bool = False,
+        max_output_rows: int | None = None,
     ) -> str:
         """Baseball Reference split statistics for one player (platoon, home/away, etc.).
 
@@ -174,6 +197,7 @@ def register_expanded_tools(
             year: Season year; omit for career splits.
             pitching_splits: If True, use pitching splits tables instead of batting.
             include_player_info: If True, append bio snippet (handedness, etc.) when available.
+            max_output_rows: Max rows per returned table (defaults vary by section). Capped at 5000.
 
         Note: Response can be wide; many split tables may be concatenated vertically by BRef.
         """
@@ -187,22 +211,48 @@ def register_expanded_tools(
         parts: list[str] = []
         if isinstance(out, tuple):
             if len(out) >= 1 and isinstance(out[0], pd.DataFrame):
-                parts.append(_fmt(out[0], max_rows=120))
+                parts.append(
+                    _fmt(
+                        out[0],
+                        max_rows=output_limit(
+                            max_output_rows, DEFAULT_PLAYER_SPLITS_PRIMARY_ROWS
+                        ),
+                    )
+                )
             if include_player_info and len(out) >= 2 and isinstance(out[1], dict):
                 parts.append("**Player info:** " + str(out[1]))
             if pitching_splits and len(out) >= 2 and isinstance(out[-1], pd.DataFrame):
-                parts.append("**Game-level (pitching):**\n" + _fmt(out[-1], max_rows=80))
+                parts.append(
+                    "**Game-level (pitching):**\n"
+                    + _fmt(
+                        out[-1],
+                        max_rows=output_limit(
+                            max_output_rows, DEFAULT_PLAYER_SPLITS_PITCHING_GAME_ROWS
+                        ),
+                    )
+                )
         else:
-            parts.append(_fmt(out, max_rows=200))
+            parts.append(
+                _fmt(
+                    out,
+                    max_rows=output_limit(
+                        max_output_rows, DEFAULT_PLAYER_SPLITS_SINGLE_TABLE_ROWS
+                    ),
+                )
+            )
         text = "\n\n".join(p for p in parts if p)
         return text if text.strip() else "No split data returned."
 
     @_reg
-    def statcast_game_pitches(game_pk: int) -> str:
+    def statcast_game_pitches(
+        game_pk: int,
+        max_output_rows: int | None = None,
+    ) -> str:
         """All Statcast pitch rows for a single MLB game.
 
         Args:
             game_pk: MLB Advanced Media game PK (6+ digit integer; appears in Savant URLs).
+            max_output_rows: Max rows (default 100). Capped at 5000.
 
         Find ``game_pk`` from a pitch-level query or box score.
         """
@@ -215,7 +265,10 @@ def register_expanded_tools(
         if data is None or data.empty:
             return f"No Statcast data for game_pk={game_pk}."
         data = _trim_pitch_cols(data)
-        return _fmt(data, max_rows=100)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_PITCH_LEVEL_ROWS),
+        )
 
     @_reg
     def batter_vs_pitcher_statcast(
@@ -223,6 +276,7 @@ def register_expanded_tools(
         pitcher_name: str,
         start_date: str,
         end_date: str,
+        max_output_rows: int | None = None,
     ) -> str:
         """Summarize Statcast outcomes for one batter against one pitcher (date range).
 
@@ -233,6 +287,7 @@ def register_expanded_tools(
             batter_name: Hitter's name.
             pitcher_name: Pitcher's name.
             start_date, end_date: YYYY-MM-DD (keep ranges short; Statcast is heavy).
+            max_output_rows: Max sample pitch rows shown (default 80). Capped at 5000.
         """
         from pybaseball import statcast_batter as _sb
 
@@ -297,15 +352,16 @@ def register_expanded_tools(
             lines.append("**Event counts (pitch rows):**\n" + vc.to_string())
         if ev is not None and len(ev):
             lines.append(f"\n**Avg exit velocity (batted balls with velo):** {ev.mean():.1f} mph (n={len(ev)})")
-        summ = df.head(80)
+        n_sample = output_limit(max_output_rows, DEFAULT_BVP_SAMPLE_ROWS)
+        summ = df.head(n_sample)
         lines.append("\n**Sample pitch rows:**\n")
-        return "\n".join(lines) + _fmt(summ, max_rows=80)
+        return "\n".join(lines) + _fmt(summ, max_rows=n_sample)
 
     @_reg
     def lahman_season_batting(
         season: int,
         team_id: str | None = None,
-        max_rows: int = 200,
+        max_output_rows: int | None = None,
     ) -> str:
         """Lahman / Baseball Data Bank batting rows for one season (1871–present file).
 
@@ -314,7 +370,7 @@ def register_expanded_tools(
         Args:
             season: ``yearID`` to filter.
             team_id: Optional 3-letter ``teamID`` (e.g. ``PHI``).
-            max_rows: Cap output rows (default 200).
+            max_output_rows: Cap output rows (default 200). Capped at 5000.
         """
         from pybaseball import batting as _bat
         from pybaseball import download_lahman
@@ -335,13 +391,16 @@ def register_expanded_tools(
             tid = team_id.strip().upper()
             if "teamID" in data.columns:
                 data = data[data["teamID"] == tid]
-        return _fmt(data, max_rows=max_rows)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_TEAM_SEASON_ROWS),
+        )
 
     @_reg
     def lahman_season_pitching(
         season: int,
         team_id: str | None = None,
-        max_rows: int = 200,
+        max_output_rows: int | None = None,
     ) -> str:
         """Lahman pitching rows for one season; optional ``teamID`` filter."""
         from pybaseball import download_lahman
@@ -360,11 +419,22 @@ def register_expanded_tools(
             tid = team_id.strip().upper()
             if "teamID" in data.columns:
                 data = data[data["teamID"] == tid]
-        return _fmt(data, max_rows=max_rows)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_TEAM_SEASON_ROWS),
+        )
 
     @_reg
-    def lahman_season_teams(season: int) -> str:
-        """Lahman **Teams** table rows for one season (standings-level team stats)."""
+    def lahman_season_teams(
+        season: int,
+        max_output_rows: int | None = None,
+    ) -> str:
+        """Lahman **Teams** table rows for one season (standings-level team stats).
+
+        Args:
+            season: ``yearID`` to filter.
+            max_output_rows: Max rows (default 60). Capped at 5000.
+        """
         from pybaseball import download_lahman
         from pybaseball import teams_core
 
@@ -377,18 +447,23 @@ def register_expanded_tools(
             except Exception as e:
                 return f"Error loading Lahman teams: {e}"
         data = data[data["yearID"] == int(season)]
-        return _fmt(data, max_rows=60)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LAHMAN_TEAMS_ROWS),
+        )
 
     @_reg
     def top_prospects_mlb(
         team_name: str | None = None,
         player_type: str | None = None,
+        max_output_rows: int | None = None,
     ) -> str:
         """MLB Pipeline top prospects table (MLB.com / pybaseball).
 
         Args:
             team_name: e.g. ``Phillies`` or ``Yankees`` (no spaces in slug — use full franchise name).
             player_type: ``batters``, ``pitchers``, or None for both (concatenated).
+            max_output_rows: Max rows (default 100). Capped at 5000.
         """
         from pybaseball import top_prospects
 
@@ -396,26 +471,45 @@ def register_expanded_tools(
             data = top_prospects(teamName=team_name, playerType=player_type)
         except Exception as e:
             return f"Error fetching prospects: {e}"
-        return _fmt(data, max_rows=100)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_PITCH_LEVEL_ROWS),
+        )
 
     @_reg
     def amateur_draft_round(
         year: int,
         draft_round: int,
         keep_stats: bool = True,
+        max_output_rows: int | None = None,
     ) -> str:
-        """Amateur draft results for a given year and round (Baseball Reference)."""
+        """Amateur draft results for a given year and round (Baseball Reference).
+
+        Args:
+            max_output_rows: Max rows (default 100). Capped at 5000.
+        """
         from pybaseball import amateur_draft
 
         try:
             data = amateur_draft(year, draft_round, keep_stats=keep_stats)
         except Exception as e:
             return f"Error fetching draft: {e}"
-        return _fmt(data, max_rows=100)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_PITCH_LEVEL_ROWS),
+        )
 
     @_reg
-    def war_daily_batting(season: int | None = None, max_rows: int = 200) -> str:
-        """Baseball Reference WAR components for batters (``war_daily_bat``); optional season filter."""
+    def war_daily_batting(
+        season: int | None = None,
+        max_output_rows: int | None = None,
+    ) -> str:
+        """Baseball Reference WAR components for batters (``war_daily_bat``); optional season filter.
+
+        Args:
+            season: Optional year filter.
+            max_output_rows: Max rows (default 200). Capped at 5000.
+        """
         from pybaseball import bwar_bat
 
         try:
@@ -424,11 +518,22 @@ def register_expanded_tools(
             return f"Error fetching batting WAR file: {e}"
         if season is not None and "year_ID" in data.columns:
             data = data[data["year_ID"] == int(season)]
-        return _fmt(data, max_rows=max_rows)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_TEAM_SEASON_ROWS),
+        )
 
     @_reg
-    def war_daily_pitching(season: int | None = None, max_rows: int = 200) -> str:
-        """Baseball Reference WAR components for pitchers; optional season filter."""
+    def war_daily_pitching(
+        season: int | None = None,
+        max_output_rows: int | None = None,
+    ) -> str:
+        """Baseball Reference WAR components for pitchers; optional season filter.
+
+        Args:
+            season: Optional year filter.
+            max_output_rows: Max rows (default 200). Capped at 5000.
+        """
         from pybaseball import bwar_pitch
 
         try:
@@ -437,15 +542,23 @@ def register_expanded_tools(
             return f"Error fetching pitching WAR file: {e}"
         if season is not None and "year_ID" in data.columns:
             data = data[data["year_ID"] == int(season)]
-        return _fmt(data, max_rows=max_rows)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_TEAM_SEASON_ROWS),
+        )
 
     @_reg
     def season_fielding_stats(
         start_season: int,
         end_season: int | None = None,
         player_name: str | None = None,
+        max_output_rows: int | None = None,
     ) -> str:
-        """FanGraphs season fielding leaderboard (DEF, UZR where available)."""
+        """FanGraphs season fielding leaderboard (DEF, UZR where available).
+
+        Args:
+            max_output_rows: Max rows (default 50). Capped at 5000.
+        """
         from pybaseball import fielding_stats
 
         if end_season is None:
@@ -461,72 +574,112 @@ def register_expanded_tools(
                 return str(e)
             if data.empty:
                 return f"No FanGraphs fielding row for {player_name} in {start_season}–{end_season}."
-        return _fmt(data, max_rows=50)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
     @_reg
     def statcast_running_splits_detail(
         year: int,
         min_opportunities: int = 5,
         raw_splits: bool = True,
+        max_output_rows: int | None = None,
     ) -> str:
-        """90-foot sprint split times (Statcast) — raw or percentile by 5-foot windows."""
+        """90-foot sprint split times (Statcast) — raw or percentile by 5-foot windows.
+
+        Args:
+            max_output_rows: Max rows (default 50). Capped at 5000.
+        """
         from pybaseball import statcast_running_splits
 
         try:
             data = statcast_running_splits(year, min_opp=min_opportunities, raw_splits=raw_splits)
         except Exception as e:
             return f"Error fetching running splits: {e}"
-        return _fmt(data, max_rows=50)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
     @_reg
     def statcast_outfield_catch_probability(
         year: int,
         min_opportunities: str | int = "q",
+        max_output_rows: int | None = None,
     ) -> str:
-        """Outfield jump/catch star ratings / probability buckets (Statcast)."""
+        """Outfield jump/catch star ratings / probability buckets (Statcast).
+
+        Args:
+            max_output_rows: Max rows (default 50). Capped at 5000.
+        """
         from pybaseball import statcast_outfield_catch_prob
 
         try:
             data = statcast_outfield_catch_prob(year, min_opp=min_opportunities)
         except Exception as e:
             return f"Error fetching catch probability: {e}"
-        return _fmt(data, max_rows=50)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
     @_reg
     def statcast_outfield_jump(
         year: int,
         min_attempts: str | int = "q",
+        max_output_rows: int | None = None,
     ) -> str:
-        """Outfield jump metric leaderboard (Statcast)."""
+        """Outfield jump metric leaderboard (Statcast).
+
+        Args:
+            max_output_rows: Max rows (default 50). Capped at 5000.
+        """
         from pybaseball import statcast_outfielder_jump
 
         try:
             data = statcast_outfielder_jump(year, min_att=min_attempts)
         except Exception as e:
             return f"Error fetching outfield jump: {e}"
-        return _fmt(data, max_rows=50)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
     @_reg
     def statcast_catcher_framing(
         year: int,
         min_called_pitches: str | int = "q",
+        max_output_rows: int | None = None,
     ) -> str:
-        """Catcher framing runs / strike rate in shadow zones (Statcast)."""
+        """Catcher framing runs / strike rate in shadow zones (Statcast).
+
+        Args:
+            max_output_rows: Max rows (default 50). Capped at 5000.
+        """
         from pybaseball import statcast_catcher_framing
 
         try:
             data = statcast_catcher_framing(year, min_called_p=min_called_pitches)
         except Exception as e:
             return f"Error fetching framing: {e}"
-        return _fmt(data, max_rows=50)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
     @_reg
     def statcast_catcher_poptime(
         year: int,
         min_second_base_attempts: int = 5,
         min_third_base_attempts: int = 0,
+        max_output_rows: int | None = None,
     ) -> str:
-        """Catcher pop times to 2B/3B (Statcast)."""
+        """Catcher pop times to 2B/3B (Statcast).
+
+        Args:
+            max_output_rows: Max rows (default 50). Capped at 5000.
+        """
         from pybaseball import statcast_catcher_poptime
 
         try:
@@ -535,29 +688,45 @@ def register_expanded_tools(
             )
         except Exception as e:
             return f"Error fetching pop time: {e}"
-        return _fmt(data, max_rows=50)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
     @_reg
     def statcast_pitcher_pitch_movement(
         year: int,
         pitch_type: str = "FF",
         min_pitches: str | int = "q",
+        max_output_rows: int | None = None,
     ) -> str:
-        """Pitch movement leaderboard (break/induced) for a pitch type (Statcast)."""
+        """Pitch movement leaderboard (break/induced) for a pitch type (Statcast).
+
+        Args:
+            max_output_rows: Max rows (default 50). Capped at 5000.
+        """
         from pybaseball.statcast_pitcher import statcast_pitcher_pitch_movement
 
         try:
             data = statcast_pitcher_pitch_movement(year, minP=min_pitches, pitch_type=pitch_type)
         except Exception as e:
             return f"Error fetching pitch movement: {e}"
-        return _fmt(data, max_rows=50)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
     @_reg
     def statcast_pitcher_active_spin_leaderboard(
         year: int,
         min_pitches: int = 250,
+        max_output_rows: int | None = None,
     ) -> str:
-        """Active spin rate leaderboard (Statcast; spin-based or observed fallback in pybaseball)."""
+        """Active spin rate leaderboard (Statcast; spin-based or observed fallback in pybaseball).
+
+        Args:
+            max_output_rows: Max rows (default 50). Capped at 5000.
+        """
         from pybaseball.statcast_pitcher import statcast_pitcher_active_spin
 
         try:
@@ -566,13 +735,22 @@ def register_expanded_tools(
             return f"Error fetching active spin: {e}"
         if data is None or data.empty:
             return "No active spin data for this year (try a recent season)."
-        return _fmt(data, max_rows=50)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
+        )
 
     @_reg
-    def league_team_batting_totals(season: int) -> str:
+    def league_team_batting_totals(
+        season: int,
+        max_output_rows: int | None = None,
+    ) -> str:
         """FanGraphs **team** batting lines — one row per club (league-wide).
 
         May fail if FanGraphs blocks automated requests; try again later or use team_season_batting_stats.
+
+        Args:
+            max_output_rows: Max rows (default 40). Capped at 5000.
         """
         from pybaseball import fg_team_batting_data
 
@@ -580,17 +758,30 @@ def register_expanded_tools(
             data = fg_team_batting_data(season, season, team="0,ts")
         except Exception as e:
             return f"Error fetching team batting totals: {e}"
-        return _fmt(data, max_rows=40)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEAGUE_TEAM_TOTALS_ROWS),
+        )
 
     @_reg
-    def league_team_pitching_totals(season: int) -> str:
-        """FanGraphs **team** pitching lines — one row per club."""
+    def league_team_pitching_totals(
+        season: int,
+        max_output_rows: int | None = None,
+    ) -> str:
+        """FanGraphs **team** pitching lines — one row per club.
+
+        Args:
+            max_output_rows: Max rows (default 40). Capped at 5000.
+        """
         from pybaseball import fg_team_pitching_data
 
         try:
             data = fg_team_pitching_data(season, season, team="0,ts")
         except Exception as e:
             return f"Error fetching team pitching totals: {e}"
-        return _fmt(data, max_rows=40)
+        return _fmt(
+            data,
+            max_rows=output_limit(max_output_rows, DEFAULT_LEAGUE_TEAM_TOTALS_ROWS),
+        )
 
     return registered
