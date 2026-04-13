@@ -255,6 +255,37 @@ def _batch_filter_players(
     return pd.concat(chunks, ignore_index=True), errors
 
 
+def _resolve_stat_column(df: pd.DataFrame, sort_by: str) -> str | None:
+    """Match a user stat name (e.g. ``SLG``, ``wRC+``) to a column in ``df``."""
+    if df.empty or not sort_by or not str(sort_by).strip():
+        return None
+    s = str(sort_by).strip()
+    if s in df.columns:
+        return s
+    lower_map = {str(c).lower(): c for c in df.columns}
+    if s.lower() in lower_map:
+        return lower_map[s.lower()]
+    return None
+
+
+def _sort_dataframe_by_column(
+    df: pd.DataFrame,
+    sort_by: str,
+    *,
+    descending: bool,
+) -> tuple[pd.DataFrame, str | None]:
+    """Sort by numeric interpretation of ``sort_by`` column. Returns (df, warning or None)."""
+    col = _resolve_stat_column(df, sort_by)
+    if col is None:
+        return df, f"Unknown sort column {sort_by!r}; available columns include SLG, HR, OPS, wRC+, PA, etc."
+    out = df.copy()
+    key = pd.to_numeric(out[col], errors="coerce")
+    out = out.assign(_sort_key=key).sort_values(
+        "_sort_key", ascending=not descending, na_position="last"
+    )
+    return out.drop(columns=["_sort_key"]), None
+
+
 def _normalize_team_abbr(team: str) -> str:
     """Validate and normalize a 3-letter MLB / Baseball-Reference team code."""
     t = team.strip().upper()
@@ -531,6 +562,8 @@ def season_batting_stats(
     min_plate_appearances: int | None = None,
     player_name: str | None = None,
     max_output_rows: int | None = None,
+    sort_by: str | None = None,
+    sort_descending: bool = True,
 ) -> str:
     """Get season-level batting statistics from FanGraphs.
 
@@ -544,6 +577,12 @@ def season_batting_stats(
             Leave blank to use the FanGraphs default qualified threshold.
         player_name: Optional. Filter to one player (e.g. 'Aaron Judge').
         max_output_rows: Max rows in the table (default 50). Capped at 5000.
+        sort_by: Optional stat column to sort by before truncating (e.g. ``SLG``, ``HR``, ``wRC+``, ``OPS``).
+            Use this for leaderboards (e.g. top 200 by slugging).
+        sort_descending: If True (default), highest values first when ``sort_by`` is set.
+
+    If FanGraphs is unavailable (e.g. HTTP 403), a **single-season** query falls back to
+    Baseball Reference via pybaseball (same sort/min-PA behavior).
 
     Great for finding league leaders, comparing players, or reviewing a full season.
     """
@@ -552,10 +591,32 @@ def season_batting_stats(
     if end_season is None:
         end_season = start_season
 
+    prefix = ""
     try:
         data = batting_stats(start_season, end_season, qual=min_plate_appearances)
     except Exception as e:
-        return f"Error fetching batting stats: {e}"
+        if start_season != end_season:
+            return f"Error fetching batting stats: {e}"
+        try:
+            from pybaseball import batting_stats_bref
+
+            data = batting_stats_bref(start_season)
+            prefix = (
+                "*Data source: Baseball Reference (FanGraphs was unavailable).*\n\n"
+            )
+            if min_plate_appearances is not None:
+                pa = pd.to_numeric(data["PA"], errors="coerce")
+                data = data.loc[pa >= int(min_plate_appearances)].reset_index(drop=True)
+        except Exception as e2:
+            return f"Error fetching batting stats: {e}\nBaseball Reference fallback failed: {e2}"
+
+    sort_warn: str | None = None
+    if sort_by:
+        data, sort_warn = _sort_dataframe_by_column(
+            data, sort_by, descending=sort_descending
+        )
+        if sort_warn:
+            prefix += f"**Note:** {sort_warn}\n\n"
 
     if player_name:
         try:
@@ -564,11 +625,11 @@ def season_batting_stats(
             return str(e)
         if data.empty:
             return (
-                f"No FanGraphs batting row for {player_name} in {start_season}-{end_season} "
+                f"No batting stats row for {player_name} in {start_season}-{end_season} "
                 "with the given PA threshold."
             )
 
-    return _fmt(
+    return prefix + _fmt(
         data,
         max_rows=output_limit(max_output_rows, DEFAULT_LEADERBOARD_ROWS),
     )
